@@ -1,0 +1,355 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink-navy: #0A1B33;
+  --circuit-amber: #F2A93B;
+  --porcelain: #F7F5F0;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  font-family: 'IBM Plex Sans', sans-serif;
+  background: var(--porcelain);
+  color: #1b1c19;
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+html { overflow-x: hidden; font-size: clamp(14px, 2.6vw + 6px, 16px); }
+body { overflow-x: hidden; max-width: 100vw; }
+#root { width: 100%; max-width: 100vw; overflow-x: hidden; }
+@media (min-width: 768px) { html { font-size: 16px; } }
+/* Ensure all images/media are responsive + prevent flex/grid blowout */
+img, video, canvas, svg { max-width: 100%; height: auto; }
+* { scrollbar-width: thin; }
+.container-responsive { width: 100%; max-width: 1280px; margin-inline: auto; padding-inline: clamp(12px, 4vw, 32px); }
+/* Global flex/grid item fix: allow shrinking to prevent horizontal overflow on mobile */
+.flex > *, .grid > * { min-width: 0; }
+.break-words, .break-all { overflow-wrap: anywhere; word-break: break-word; }
+
+/* Material Symbols — hard-clipped 1em box so fallback ligature text ("waves") can NEVER spill as WAVE overlay.
+   Even if font fails or is still loading, the ligature is clipped to a single glyph-sized box. */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: inherit;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  width: 1em;
+  height: 1em;
+  max-width: 1em;
+  max-height: 1em;
+  overflow: hidden;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'liga';
+  -webkit-font-feature-settings: 'liga';
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+.icon-fill { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+/* Hide ligature until font is ready — prevents FOUT flash of "waves" text during slow load.
+   Uses visibility (not color) so Tailwind text-* color utilities stay intact for amber/white icons.
+   SVG fallback .icon-waves-svg is NEVER hidden. */
+html:not(.fonts-loaded) .material-symbols-outlined {
+  visibility: hidden !important;
+}
+html.fonts-loaded .material-symbols-outlined {
+  visibility: visible !important;
+}
+/* Waves SVG fallback — always visible, matches icon size via 1em */
+.icon-waves-svg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  line-height: 1;
+  overflow: hidden;
+}
+
+/* Pulse dot — the live signal */
+.pulse-dot {
+  animation: pulse-animation 2s infinite;
+}
+@keyframes pulse-animation {
+  0%   { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(242, 169, 59, 0.7); }
+  70%  { transform: scale(1);    box-shadow: 0 0 0 6px rgba(242, 169, 59, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(242, 169, 59, 0); }
+}
+
+/* Animated dashed pulse line (tracker) */
+.pulse-line {
+  background-image: linear-gradient(90deg, var(--circuit-amber) 50%, transparent 50%);
+  background-size: 12px 2px;
+  background-repeat: repeat-x;
+  animation: pulse-line-move 1.2s linear infinite;
+}
+@keyframes pulse-line-move {
+  from { background-position-x: 0; }
+  to   { background-position-x: 12px; }
+}
+
+/* Radar ping for technician beacon */
+.radar-ping::before,
+.radar-ping::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  border: 2px solid rgba(242, 169, 59, 0.6);
+  animation: radar-expand 2s ease-out infinite;
+}
+.radar-ping::after { animation-delay: 1s; }
+@keyframes radar-expand {
+  0%   { transform: scale(0.8); opacity: 0.8; }
+  100% { transform: scale(2);   opacity: 0; }
+}
+
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Hero aurora glow — tuned for WCAG contrast: keeps top dark enough for white text */
+.aurora {
+  background:
+    radial-gradient(55% 75% at 20% 12%, rgba(242,169,59,0.08) 0%, transparent 60%),
+    radial-gradient(45% 65% at 85% 22%, rgba(46,158,107,0.06) 0%, transparent 55%),
+    radial-gradient(75% 85% at 55% 100%, rgba(19,42,77,0.95) 0%, transparent 70%),
+    linear-gradient(180deg, rgba(10,27,51,0.55) 0%, rgba(10,27,51,0) 35%);
+}
+.grid-lines {
+  background-image:
+    linear-gradient(rgba(201,207,219,0.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(201,207,219,0.10) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* Shake for OTP error */
+.shake { animation: shake 0.35s ease; }
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+/* Wire draw-in */
+.draw-wire { stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: draw-wire-anim 1.6s cubic-bezier(0.16,1,0.3,1) forwards; }
+@keyframes draw-wire-anim { to { stroke-dashoffset: 0; } }
+
+/* Float for login panel icon */
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+/* Login icon — optimum orientation + touch movement + blink */
+.login-icon-wrap {
+  transform: rotate(3deg);
+  transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.35s ease, background-color 0.35s ease;
+}
+.login-icon-wrap:hover {
+  transform: rotate(0deg) scale(1.05);
+  box-shadow: 0 0 0 4px rgba(242,169,59,0.15), 0 8px 24px rgba(242,169,59,0.25);
+}
+.login-icon-wrap:active {
+  transform: rotate(-2deg) scale(0.96);
+  animation: icon-wiggle 0.5s cubic-bezier(0.34,1.56,0.64,1);
+}
+.login-icon-wrap .login-icon {
+  transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
+}
+.login-icon-wrap:active .login-icon {
+  animation: icon-blink 0.6s ease, icon-bounce 0.5s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes icon-wiggle {
+  0% { transform: rotate(-2deg) scale(0.96); }
+  25% { transform: rotate(2deg) scale(0.98); }
+  50% { transform: rotate(-1deg) scale(1.02); }
+  75% { transform: rotate(1deg) scale(0.98); }
+  100% { transform: rotate(0deg) scale(1.05); }
+}
+@keyframes icon-bounce {
+  0% { transform: scale(1) translateY(0); }
+  30% { transform: scale(1.15) translateY(-2px); }
+  60% { transform: scale(0.95) translateY(1px); }
+  100% { transform: scale(1) translateY(0); }
+}
+@keyframes icon-blink {
+  0%, 100% { opacity: 1; filter: brightness(1); }
+  20% { opacity: 0.7; filter: brightness(1.2); }
+  40% { opacity: 1; filter: brightness(1.3); }
+  60% { opacity: 0.85; filter: brightness(1.1); }
+  80% { opacity: 1; filter: brightness(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-icon-wrap, .login-icon-wrap .login-icon { transition: none; animation: none; transform: none; }
+}
+
+/* Rise-in entrance */
+.rise { opacity: 0; transform: translateY(14px); animation: rise-in 0.55s cubic-bezier(0.16,1,0.3,1) forwards; }
+.rise-d1 { animation-delay: 0.08s; } .rise-d2 { animation-delay: 0.16s; }
+.rise-d3 { animation-delay: 0.24s; } .rise-d4 { animation-delay: 0.32s; }
+@keyframes rise-in { to { opacity: 1; transform: translateY(0); } }
+
+/* Ambient hero glow drift */
+.glow-drift { animation: glow-drift 9s ease-in-out infinite; }
+@keyframes glow-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.85; }
+  50%      { transform: translate(22px, -16px) scale(1.08); opacity: 1; }
+}
+
+/* Floating tracker card */
+.float-slow { animation: float 5.5s ease-in-out infinite; }
+
+/* Live activity ticker — seamless loop (track duplicated once) */
+.ticker-track { display: flex; width: max-content; animation: ticker-scroll 28s linear infinite; }
+@keyframes ticker-scroll { to { transform: translateX(-50%); } }
+
+/* Hero headline underline draw-in */
+.draw-underline { stroke-dasharray: 420; stroke-dashoffset: 420; animation: draw-wire-anim 1.1s 0.45s cubic-bezier(0.16,1,0.3,1) forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shake, .draw-wire, .rise { animation: none; opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot, .pulse-line, .radar-ping::before, .radar-ping::after, .glow-drift, .ticker-track, .float-slow { animation: none; }
+  .draw-underline { animation: none; stroke-dashoffset: 0; }
+}
+
+/* =========================================================
+   MOBILE POLISH — desktop-mirrored
+   These rules keep mobile visually identical to desktop
+   tokens (colors/shadows/radius/type) but add thumb-
+   friendly feedback and smooth responsive behavior.
+   No forced max-w-md or radius overrides — mobile now
+   uses same max-w-6xl / rounded-2xl / p-6 as desktop,
+   just stacked via Tailwind responsive grid.
+   ========================================================= */
+
+@media (max-width: 1024px) {
+  html { -webkit-tap-highlight-color: transparent; scroll-behavior: smooth; }
+  body { overscroll-behavior-y: auto; background: var(--porcelain); }
+  * { -webkit-tap-highlight-color: transparent; }
+  .hide-scrollbar, .overflow-x-auto, .overflow-y-auto { -webkit-overflow-scrolling: touch; }
+
+  main { padding-bottom: env(safe-area-inset-bottom); }
+
+  button:not(.no-thumb):active, a:active { transform: scale(0.97); }
+
+  /* Pressable card feedback — same shadow as desktop, subtle scale */
+  .pressable { transition: transform 0.15s cubic-bezier(0.16,1,0.3,1), box-shadow 0.15s ease, border-color 0.15s ease; }
+  .pressable:active { transform: scale(0.985); box-shadow: 0 2px 8px rgba(10,27,51,0.08); }
+
+  @keyframes slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes slide-down { from { transform: translateY(-12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes pop-in { 0% { transform: scale(0.92); opacity: 0; } 60% { transform: scale(1.02); } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  @keyframes soft-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+  @keyframes glow-pulse-mobile { 0%,100% { box-shadow: 0 0 0 0 rgba(242,169,59,0.35); } 50% { box-shadow: 0 0 0 8px rgba(242,169,59,0); } }
+
+  .animate-slide-up { animation: slide-up 0.5s cubic-bezier(0.16,1,0.3,1) both; }
+  .animate-pop-in { animation: pop-in 0.45s cubic-bezier(0.34,1.56,0.64,1) both; }
+  .animate-soft-bounce { animation: soft-bounce 2.5s ease-in-out infinite; }
+
+  .skeleton {
+    background: linear-gradient(90deg, #ece9e3 25%, #f5f3ee 50%, #ece9e3 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+    border-radius: 10px;
+  }
+
+  .scroll-fade { position: relative; }
+  .scroll-fade::after {
+    content: ''; position: absolute; top: 0; right: 0; bottom: 6px; width: 32px;
+    background: linear-gradient(to right, transparent, var(--porcelain));
+    pointer-events: none; border-radius: 0 12px 12px 0; opacity: 0.9;
+  }
+
+  .mobile-stagger > * { opacity: 0; transform: translateY(10px); animation: rise-in 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }
+  .mobile-stagger > *:nth-child(1) { animation-delay: 0.04s; }
+  .mobile-stagger > *:nth-child(2) { animation-delay: 0.09s; }
+  .mobile-stagger > *:nth-child(3) { animation-delay: 0.14s; }
+  .mobile-stagger > *:nth-child(4) { animation-delay: 0.19s; }
+  .mobile-stagger > *:nth-child(5) { animation-delay: 0.24s; }
+  .mobile-stagger > *:nth-child(6) { animation-delay: 0.28s; }
+
+  .mobile-header-scrolled { box-shadow: 0 4px 20px rgba(10,27,51,0.08); backdrop-filter: blur(12px); }
+
+  /* Keep desktop typography rhythm — just tighten slightly for narrow width, same tokens */
+  h1.font-display { line-height: 1.05; letter-spacing: -0.02em; }
+  p { overflow-wrap: break-word; word-break: break-word; }
+
+  section { scroll-margin-top: 56px; }
+  button.w-full { min-height: 48px; }
+}
+
+/* Android 360-430 — compact buttons & icons for small Android screens */
+@media (max-width: 430px) {
+  /* Buttons: 2-4px tighter padding, 44dp min-height (vs 48) for Android compact */
+  button { letter-spacing: -0.01em; }
+  button.w-full { min-height: 44px; }
+  /* Any fixed min-h-[52px]/[48px] — shrink 8px on Android 360 */
+  [class*="min-h-\[52px\]"] { min-height: 44px !important; }
+  [class*="min-h-\[48px\]"] { min-height: 40px !important; }
+  [class*="min-h-\[44px\]"] { min-height: 40px !important; }
+  /* Icons: scale down 2px on Android 360 to avoid overflow in 2-col grids */
+  .material-symbols-outlined.text-xl { font-size: 18px !important; }
+  .material-symbols-outlined.text-2xl { font-size: 20px !important; }
+  .material-symbols-outlined.text-\[20px\] { font-size: 18px !important; }
+  .material-symbols-outlined.text-\[24px\] { font-size: 20px !important; }
+  .material-symbols-outlined.text-\[18px\] { font-size: 16px !important; }
+  /* Feature/portal grids: keep 8px gap on 360, not 12 */
+  .grid.grid-cols-2 { gap: 0.5rem; }
+  /* Header: tighter */
+  header .max-w-6xl { padding-inline: 0.75rem; }
+  /* Hero: prevent headline wrap overflow — already handled via xs: classes, keep clamp as safety */
+  h1.font-display { font-size: clamp(22px, 7vw, 28px); }
+  /* BottomNav: ensure labels don't wrap on 360 */
+  nav .text-\[10px\] { font-size: 9px !important; }
+  nav .text-\[11px\] { font-size: 10px !important; }
+}
+/* Extra small refinements — only tiny phones */
+@media (max-width: 380px) {
+  /* Tighter tracking for tiny screens */
+  .font-display { letter-spacing: -0.02em; }
+  /* OTP boxes breathe a bit more */
+  .otp-tight { gap: 6px !important; }
+  /* Android tiny: even more compact CTAs */
+  button { font-size: 13px; }
+}
+
+/* Mobile input focus — more visible glow */
+@media (max-width: 640px) {
+  input:focus, textarea:focus, select:focus {
+    box-shadow: 0 0 0 3px rgba(242,169,59,0.18), 0 4px 12px rgba(242,169,59,0.12);
+  }
+  /* Prevent zoom on iOS for inputs <16px */
+  input, textarea, select { font-size: 16px !important; }
+  /* But keep small mono IDs readable */
+  .font-mono.text-\[10px\], .font-mono.text-\[11px\] { font-size: 11px !important; }
+}
+
+/* Safe area padding helpers */
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
+.safe-bottom-lg { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+.header-safe { padding-top: max(0px, env(safe-area-inset-top)); }
+
+/* Reduce motion already handled, but ensure mobile animations respect it */
+@media (max-width: 1024px) and (prefers-reduced-motion: reduce) {
+  .animate-slide-up, .animate-pop-in, .mobile-stagger > *, .skeleton { animation: none; opacity: 1; transform: none; }
+}

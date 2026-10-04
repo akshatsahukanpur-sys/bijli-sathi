@@ -1,0 +1,10 @@
+.vercel
+.env
+node_modules/
+uploads/
+*.log
+citizen_token.json
+kesco_token.json
+anurag_token.json
+complaint.json
+.env*

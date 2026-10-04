@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+dist/
+build/
+.vercel/
+
+# env
+.env
+.env.*
+!.env.example
+backend/.env*
+backend/*token*.json
+backend/complaint.json
+backend/*.log
+*.pem
+*.key
+
+# uploads
+backend/uploads/
+uploads/
+
+# docs & media
+*.md
+*.txt
+*.png
+*.jpg
+*.jpeg
+
+# local
+/models/
+*.bin
+*.onnx
+*.pt
+*.pth
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
