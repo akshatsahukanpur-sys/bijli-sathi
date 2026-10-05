@@ -457,10 +457,9 @@ export default function KescoDashboard({ go }) {
         </div>
       </div>
 
-      {/* FAB — Issue Console — above BottomNav on mobile, compact circle to not cover Officer */}
+      {/* FAB — Issue Console — mobile: bottom-LEFT above BottomNav so it never overlaps the Sathi (bottom-right) FAB */}
       <button onClick={() => setConsole(true)} title={t('issueConsole')}
-        className="fixed bottom-20 sm:bottom-8 lg:bottom-8 right-4 sm:right-5 lg:right-8 z-40 h-12 w-12 sm:h-14 sm:w-auto sm:px-5 rounded-full bg-circuit-amber text-ink-navy shadow-glow-amber flex items-center justify-center sm:gap-2 hover:bg-secondary-container active:scale-90 transition-all overflow-hidden shrink-0"
-        style={{ marginBottom: 'env(safe-area-inset-bottom)' }}>
+        className="fixed z-40 flex items-center justify-center rounded-full bg-circuit-amber text-ink-navy shadow-glow-amber hover:bg-secondary-container active:scale-90 transition-all overflow-hidden shrink-0 h-12 w-12 sm:h-14 sm:w-auto sm:px-5 left-4 sm:left-5 lg:left-auto lg:right-8 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] lg:bottom-8 gap-0 sm:gap-2">
         <Icon name="terminal" className="text-xl sm:text-2xl shrink-0" />
         <span className="text-sm font-bold hidden sm:inline truncate">{t('issueConsole')}</span>
       </button>

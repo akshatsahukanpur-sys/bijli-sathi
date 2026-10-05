@@ -143,7 +143,7 @@ export default function ChatAssistant({ complaintId, title = 'Sathi — Your AI 
     : [['power_off', 'Power cut in my area?'], ['support_agent', 'KESCO helpline number'], ['receipt_long', 'How to pay my bill?'], ['add_circle', 'Report a fault']]
   );
 
-  const btnPos = raise ? 'bottom-[10rem] lg:bottom-[6rem] right-3 xs:right-4 lg:right-6' : 'bottom-[7rem] sm:bottom-[6rem] lg:bottom-[1.5rem] right-3 xs:right-4 lg:right-6';
+  const btnPos = raise ? 'bottom-[calc(5.75rem+env(safe-area-inset-bottom))] lg:bottom-[6rem] right-3 xs:right-4 lg:right-6' : 'bottom-[calc(5.75rem+env(safe-area-inset-bottom))] sm:bottom-[calc(6rem+env(safe-area-inset-bottom))] lg:bottom-[1.5rem] right-3 xs:right-4 lg:right-6';
   const panelPos = raise ? 'sm:bottom-[10rem] lg:bottom-[6rem] sm:right-3 lg:right-6' : 'sm:bottom-[10.5rem] lg:bottom-[6rem] sm:right-3 lg:right-6';
 
   const Orb = ({ size = 36, spin = 3, ring = false }) => (
