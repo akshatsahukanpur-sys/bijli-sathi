@@ -1,4 +1,4 @@
-const PRIMARY_BASE = (import.meta.env.VITE_API_URL || 'https://bijli-sathi-production.up.railway.app').replace(/\/$/, '');
+const PRIMARY_BASE = (import.meta.env.VITE_API_URL || 'https://bijli-sathi-api.vercel.app').replace(/\/$/, '');
 // Fallback disabled for production stability — Vercel backend currently DB disconnected (Atlas whitelist), fallback caused "Failed to fetch" + auto-logout loop
 // To re-enable, set VITE_API_URL to stable primary and ensure both backends share MONGO_URI + JWT_SECRET
 const FALLBACK_BASE = PRIMARY_BASE; // no fallback until Vercel DB whitelisted to 0.0.0.0/0
@@ -131,49 +131,9 @@ export async function api(path, { method = 'GET', body, isForm = false } = {}) {
         try { return await tryFetch(FALLBACK_BASE, 1); } catch (e) {}
       }
 
-      // For network errors, try offline mock FIRST for login (so user always gets OTP even with 0.00 KB/s)
-      // This fixes the screenshot error where primary+fallback both fail and show "Network error (Primary: Failed to fetch)"
-      if ((isNetworkError || isAbort) && path.includes('/send-otp') && body) {
-        try {
-          const parsed = typeof body === 'string' ? JSON.parse(body) : body;
-          const email = parsed.email || 'offline@test.com';
-          const otp = String(Math.floor(100000 + Math.random() * 900000));
-          let userType = 'citizen';
-          if (parsed.technicianId) userType = 'technician';
-          else if (parsed.registrationNumber) userType = 'kesco';
-          else if (parsed.meterNumber) userType = 'citizen';
-          try {
-            const key = `bs_offline_otp_${email}`;
-            localStorage.setItem(key, JSON.stringify({ otp, ts: Date.now(), userType }));
-            localStorage.setItem(`bs_offline_user_${email}`, JSON.stringify(parsed));
-          } catch (e) {}
-          console.warn(`[API] Offline mock OTP for ${email}: ${otp} (network failed, using local mock)`);
-          clearTimeout(timeoutId);
-          return { success: true, message: 'OTP generated (offline mock) - use code shown', devOtp: otp, emailDelivered: false, offline: true };
-        } catch (e) {}
-      }
-      if (isNetworkError && path.includes('/verify-otp') && body) {
-        try {
-          const parsed = typeof body === 'string' ? JSON.parse(body) : body;
-          const email = parsed.email;
-          const otp = String(parsed.otp || '').trim();
-          const key = `bs_offline_otp_${email}`;
-          const stored = JSON.parse(localStorage.getItem(key) || 'null');
-          if (stored && String(stored.otp) === otp && Date.now() - stored.ts < 5*60*1000) {
-            const userKey = `bs_offline_user_${email}`;
-            const userData = JSON.parse(localStorage.getItem(userKey) || '{}');
-            let inferredType = stored.userType || 'citizen';
-            if (userData.technicianId) inferredType = 'technician';
-            else if (userData.registrationNumber) inferredType = 'kesco';
-            else if (userData.meterNumber) inferredType = 'citizen';
-            const header = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/=/g,'');
-            const payload = btoa(JSON.stringify({id:`offline_${email}`, userId:`offline_${email}`, userType: inferredType, exp: Math.floor(Date.now()/1000)+30*24*60*60})).replace(/=/g,'');
-            const mockToken = `${header}.${payload}.offline-mock`;
-            clearTimeout(timeoutId);
-            return { success: true, token: mockToken, userType: inferredType, userId: `offline_${email}`, offline: true };
-          }
-        } catch (e) {}
-      }
+      // No fake client-side OTPs: a locally generated code can never verify against
+      // the server (production rejects offline-mock tokens), so it only confuses
+      // users. Surface the real network error and let them retry.
 
       // For network errors, try fallback backend once (helps when CORP/CORS or Railway down, or slow mobile)
       if (isNetworkError && base === PRIMARY_BASE && PRIMARY_BASE !== FALLBACK_BASE) {
@@ -181,21 +141,6 @@ export async function api(path, { method = 'GET', body, isForm = false } = {}) {
         try {
           return await tryFetch(FALLBACK_BASE, 1);
         } catch (fallbackErr) {
-          // Fallback also failed — try offline mock as final resort before showing error
-          if (path.includes('/send-otp') && body) {
-            try {
-              const parsed = typeof body === 'string' ? JSON.parse(body) : body;
-              const email = parsed.email || 'offline@test.com';
-              const otp = String(Math.floor(100000 + Math.random() * 900000));
-              let userType = 'citizen';
-              if (parsed.technicianId) userType = 'technician';
-              else if (parsed.registrationNumber) userType = 'kesco';
-              try { localStorage.setItem(`bs_offline_otp_${email}`, JSON.stringify({ otp, ts: Date.now(), userType })); localStorage.setItem(`bs_offline_user_${email}`, JSON.stringify(parsed)); } catch (e) {}
-              console.warn(`[API] Offline mock OTP (fallback failed) for ${email}: ${otp}`);
-              clearTimeout(timeoutId);
-              return { success: true, message: 'OTP generated (offline mock) - use code shown', devOtp: otp, emailDelivered: false, offline: true };
-            } catch (e) {}
-          }
           if (fallbackErr.message.includes('Cannot reach') || fallbackErr.message.includes('Backend is waking')) throw fallbackErr;
           throw new Error(`Network error — please check internet and tap again. (Primary: ${msg || err.name})`);
         }
@@ -208,30 +153,6 @@ export async function api(path, { method = 'GET', body, isForm = false } = {}) {
         throw new Error('Backend is waking up (cold start) — please wait 5 seconds and tap Send OTP again');
       }
       if (isNetworkError) {
-        if (path.includes('/verify-otp') && body) {
-          try {
-            const parsed = JSON.parse(body);
-            const email = parsed.email;
-            const otp = String(parsed.otp).trim();
-            const key = `bs_offline_otp_${email}`;
-            const stored = JSON.parse(localStorage.getItem(key) || 'null');
-            if (stored && String(stored.otp) === otp && Date.now() - stored.ts < 5*60*1000) {
-              // Try to infer userType from stored offline user
-              const userKey = `bs_offline_user_${email}`;
-              const userData = JSON.parse(localStorage.getItem(userKey) || '{}');
-              let inferredType = stored.userType || 'citizen';
-              if (userData.technicianId) inferredType = 'technician';
-              else if (userData.registrationNumber) inferredType = 'kesco';
-              else if (userData.meterNumber) inferredType = 'citizen';
-              // Generate mock JWT-like token (not verified by backend, but frontend will accept for offline demo)
-              const header = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/=/g,'');
-              const payload = btoa(JSON.stringify({id:`offline_${email}`, userId:`offline_${email}`, userType: inferredType, exp: Math.floor(Date.now()/1000)+30*24*60*60})).replace(/=/g,'');
-              const mockToken = `${header}.${payload}.offline-mock`;
-              clearTimeout(timeoutId);
-              return { success: true, token: mockToken, userType: inferredType, userId: `offline_${email}`, offline: true };
-            }
-          } catch (e) {}
-        }
         // For complaint submit, network error — create offline mock so citizen never sees “no ID”
       if (isComplaintSubmit) {
         try {
@@ -352,30 +273,17 @@ export async function api(path, { method = 'GET', body, isForm = false } = {}) {
           return { success: true, _polling401: true, complaints: [], technicians: [], overview: {}, profile: null, technician: null, admin: null };
         }
       }
-      // On 404, try fallback backend once (in case primary is outdated) and also allow offline mock for login
+      // On 404, try fallback backend once (in case primary is outdated)
       if (res.status === 404 && base === PRIMARY_BASE && PRIMARY_BASE !== FALLBACK_BASE && path.includes('/send-otp')) {
         console.warn(`[API] Primary ${base} 404 for ${path}, trying fallback ${FALLBACK_BASE}`);
         try {
           return await tryFetch(FALLBACK_BASE, 1);
         } catch (e) {
-          // fallback also 404 -> trigger offline mock below
+          // fallback also failed -> fall through to error below
         }
       }
-      // For 404 on login, also trigger offline mock (so user can still demo)
-      if (res.status === 404 && path.includes('/send-otp') && body) {
-        try {
-          const parsed = JSON.parse(body);
-          const email = parsed.email || 'offline@test.com';
-          const otp = String(Math.floor(100000 + Math.random() * 900000));
-          let userType = 'citizen';
-          if (parsed.technicianId) userType = 'technician';
-          else if (parsed.registrationNumber) userType = 'kesco';
-          const key = `bs_offline_otp_${email}`;
-          localStorage.setItem(key, JSON.stringify({ otp, ts: Date.now(), userType }));
-          localStorage.setItem(`bs_offline_user_${email}`, JSON.stringify(parsed));
-          console.warn(`[API] 404 mock OTP for ${email}: ${otp}`);
-          return { success: true, message: 'OTP generated (offline mock due to 404) - use code shown', devOtp: otp, emailDelivered: false, offline: true };
-        } catch (e) {}
+      if (res.status === 404 && path.includes('/send-otp')) {
+        throw new Error('Login service not found on server (404) — please update the app and retry.');
       }
       throw new Error(data.error || `Request failed (${res.status})`);
     }

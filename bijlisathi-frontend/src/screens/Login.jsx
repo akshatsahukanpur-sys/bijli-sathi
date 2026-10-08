@@ -70,38 +70,25 @@ export default function Login({ role, go, onAuthChange }) {
       if (body.email && !/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(body.email)) throw new Error('Enter a valid email');
       if (!form.phone?.trim() || form.phone.replace(/\D/g, '').length < 10) throw new Error('Phone number is compulsory — at least 10 digits required');
       body.phone = form.phone.trim();
-      let res;
-      try {
-        res = await api(cfg.sendPath, { method: 'POST', body });
-      } catch (apiErr) {
-        // Offline-first: even if API 404/500/network fails, generate local mock OTP so login never blocks (like other sites demo mode)
-        // This fixes the screenshot "Network error (Primary: Failed to fetch)" with 0.00 KB/s
-        const email = body.email || 'offline@test.com';
-        const otp = String(Math.floor(100000 + Math.random() * 900000));
-        let userType = 'citizen';
-        if (body.technicianId) userType = 'technician';
-        else if (body.registrationNumber) userType = 'kesco';
-        try {
-          localStorage.setItem(`bs_offline_otp_${email}`, JSON.stringify({ otp, ts: Date.now(), userType }));
-          localStorage.setItem(`bs_offline_user_${email}`, JSON.stringify(body));
-        } catch (e) {}
-        console.warn(`[Login] API failed (${apiErr.message}), using offline mock OTP ${otp} for ${email}`);
-        res = { success: true, message: 'OTP generated (offline) - use code shown', devOtp: otp, emailDelivered: false, offline: true };
-      }
+      // No client-side mock OTP: only a server-issued code can ever verify.
+      // Network/API failures surface as errors so the user retries instead of
+      // typing a fake code that production will reject.
+      const res = await api(cfg.sendPath, { method: 'POST', body });
       // Only show CURRENT OTP — previous OTP is invalidated server-side (otpStore[email] overwritten), never show history
       if (res.devOtp) setDevOtpHint(String(res.devOtp).slice(-6));
-      if (res.message) setInfoMsg(res.message);
-      if (res.offline) {
-        setInfoMsg('Offline mode — use code below (network unavailable, demo login)');
+      if (res.emailError) {
+        setInfoMsg(`Email delivery failed: ${res.emailError} — use current code below (previous codes invalid)`);
       } else if (res.emailDelivered === false && res.devOtp) {
         setInfoMsg('Email delivery failed - use current code below (previous codes invalid)');
       } else if (res.emailDelivered) {
         setInfoMsg('OTP sent to email — only the latest code is valid (expires in 5 min)');
+      } else if (res.message) {
+        setInfoMsg(res.message);
       }
       setStage('otp');
     } catch (e) {
       // Show backend base for debugging "failed to fetch" / network errors
-      const base = (import.meta.env.VITE_API_URL || 'https://bijli-sathi-production.up.railway.app');
+      const base = (import.meta.env.VITE_API_URL || 'https://bijli-sathi-api.vercel.app');
       const needsHint = e.message.includes('Cannot reach') || e.message.includes('Network error') || e.message.includes('offline');
       const hint = needsHint ? ` (API: ${base})` : '';
       setError(e.message + hint);
@@ -113,36 +100,11 @@ export default function Login({ role, go, onAuthChange }) {
     setLoading(true); setError('');
     try {
       if (!form.phone?.trim() || form.phone.replace(/\D/g, '').length < 10) throw new Error('Phone number is compulsory — at least 10 digits required');
-      let res;
-      try {
-          res = await api('/api/auth/verify-otp', { method: 'POST', body: { email: form.email?.trim(), otp, phone: form.phone.trim() } });
-      } catch (apiErr) {
-        // Offline fallback: check against locally stored OTP from sendOtp
-        const email = form.email?.trim();
-        const key = `bs_offline_otp_${email}`;
-        try {
-          const stored = JSON.parse(localStorage.getItem(key) || 'null');
-          if (stored && String(stored.otp) === String(otp).trim() && Date.now() - stored.ts < 5*60*1000) {
-            const userKey = `bs_offline_user_${email}`;
-            const userData = JSON.parse(localStorage.getItem(userKey) || '{}');
-            let inferredType = stored.userType || validRole;
-            if (userData.technicianId) inferredType = 'technician';
-            else if (userData.registrationNumber) inferredType = 'kesco';
-            else if (userData.meterNumber) inferredType = 'citizen';
-            const header = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/=/g,'');
-            const payload = btoa(JSON.stringify({id:`offline_${email}`, userId:`offline_${email}`, userType: inferredType, exp: Math.floor(Date.now()/1000)+30*24*60*60})).replace(/=/g,'');
-            const mockToken = `${header}.${payload}.offline-mock`;
-            res = { success: true, token: mockToken, userType: inferredType, userId: `offline_${email}`, offline: true };
-            console.warn(`[Login] Offline verify mock for ${email} as ${inferredType}`);
-          } else {
-            throw apiErr;
-          }
-        } catch (e) {
-          throw apiErr;
-        }
-      }
+      // Server-verified only: offline-mock tokens are rejected by production,
+      // so a local fallback here would just fail on the next API call.
+      const res = await api('/api/auth/verify-otp', { method: 'POST', body: { email: form.email?.trim(), otp, phone: form.phone.trim() } });
       setAuth({ token: res.token, userType: res.userType, userId: res.userId });
-      // Persist phone locally so Profile shows it instantly even if backend save lags or offline mock
+      // Persist phone locally so Profile shows it instantly even if backend save lags
       if (form.phone?.trim()) {
         try { localStorage.setItem(`bs_last_phone_${String(form.email).trim().toLowerCase()}`, form.phone.trim()); } catch (e) {}
       }

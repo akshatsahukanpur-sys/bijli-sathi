@@ -61,7 +61,7 @@ const FILTERS = [
       try {
         const { io } = await import('socket.io-client');
         const { getAuth } = await import('../lib/api');
-        const API_BASE = (import.meta.env.VITE_API_URL || 'https://bijli-sathi-production.up.railway.app').replace(/\/$/, '');
+        const API_BASE = (import.meta.env.VITE_API_URL || 'https://bijli-sathi-api.vercel.app').replace(/\/$/, '');
         const tid = getAuth()?.userId;
         sock = io(API_BASE, { transports: ['websocket', 'polling'], withCredentials: false });
         const onAssigned = (data) => {

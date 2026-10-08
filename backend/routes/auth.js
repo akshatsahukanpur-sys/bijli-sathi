@@ -70,7 +70,7 @@ const sendOTP = async (email, otp, userType) => {
   // In dev/dummy mode, just log and return success (so frontend still works)
   if (!transporter) {
     console.log(`[DEV-MODE] OTP for ${email} (${userType}): ${otp} - Email not configured, logging only`);
-    return { delivered: false, fallback: true };
+    return { delivered: false, fallback: true, error: 'Email not configured on server (missing EMAIL_HOST/EMAIL_PASSWORD). Set EMAIL_* env vars.' };
   }
 
   const { email: resolvedFromEmail, name: resolvedFromName } = resolveSender(process.env.EMAIL_FROM || 'akshatsahukanpur@gmail.com');
@@ -81,6 +81,8 @@ const sendOTP = async (email, otp, userType) => {
     text: `Your BijliSathi verification OTP is: ${otp}. It expires in 5 minutes.`,
     html: `<p>Your <b>BijliSathi</b> verification OTP is: <b>${otp}</b></p><p>It expires in 5 minutes.</p>`,
   };
+  // Track last provider error so API can return an actionable hint
+  let lastError = '';
 
   // Prefer Brevo (Sendinblue) HTTP API if xkeysib key is set, else Resend HTTP API (Railway blocks 587)
   const isBrevo = String(process.env.EMAIL_PASSWORD || '').startsWith('xkeysib-');
@@ -117,12 +119,15 @@ const sendOTP = async (email, otp, userType) => {
       if (res.status === 401 && JSON.stringify(data).includes('unrecognised IP')) {
         const ip = (data.message || '').match(/(\d+\.\d+\.\d+\.\d+)/)?.[1] || 'Railway egress IP (see logs)';
         console.error(`[Email] BREVO IP BLOCK: Railway IP ${ip} is NOT authorised in Brevo. Fix: Brevo dashboard -> https://app.brevo.com/security/authorised_ips -> Authorize IP ${ip} (or 152.55.185.0/24 for AMS) OR Deactivate "Block unknown IPs" for API keys. Docs: https://help.brevo.com/hc/en-us/articles/5740111683858  OTP: ${otp}`);
+        lastError = `Brevo blocked unknown IP ${ip}. Disable "Block unknown IPs" at app.brevo.com/security/authorised_ips.`;
       }
+      lastError = lastError || `Brevo HTTP ${res.status}: ${JSON.stringify(data).slice(0, 300)}`;
       console.warn(`Brevo HTTP failed for ${email} sender=${senderEmail}: ${res.status} ${JSON.stringify(data)} - trying SMTP fallback. OTP: ${otp}`);
     } catch (err) {
       if (String(err.message).includes('unrecognised IP') || String(err.message).includes('401')) {
         console.error(`[Email] BREVO IP BLOCK exception: ${err.message} -> authorize Railway IP at https://app.brevo.com/security/authorised_ips`);
       }
+      lastError = lastError || `Brevo exception: ${err.message}`;
       console.warn(`Brevo HTTP exception for ${email}: ${err.message} - trying SMTP/Resend fallback. OTP: ${otp}`);
     }
   }
@@ -156,9 +161,16 @@ const sendOTP = async (email, otp, userType) => {
         return { delivered: true };
       }
       // Resend error - e.g., testing mode only allows own email, or domain not verified
+      const resendBody = JSON.stringify(data).slice(0, 400);
+      if (resendBody.includes('only send testing emails') || resendBody.includes('verify a domain')) {
+        lastError = 'Resend test-mode: sender onboarding@resend.dev can only mail the account owner. Verify a domain at resend.com/domains and set EMAIL_FROM to you@yourdomain, OR switch EMAIL_* to Gmail App-Password SMTP.';
+      } else {
+        lastError = `Resend HTTP ${res.status}: ${resendBody}`;
+      }
       console.warn(`Resend HTTP failed for ${email}: ${res.status} ${JSON.stringify(data)} - trying SMTP fallback. OTP: ${otp}`);
       // fall through to SMTP attempt
     } catch (err) {
+      lastError = lastError || `Resend exception: ${err.message}`;
       console.warn(`Resend HTTP exception for ${email}: ${err.message} - trying SMTP fallback. OTP: ${otp}`);
     }
   }
@@ -171,9 +183,15 @@ const sendOTP = async (email, otp, userType) => {
     console.log(`OTP sent via SMTP to ${email}`);
     return { delivered: true };
   } catch (err) {
+    const smtpMsg = String(err.message || '');
+    if (smtpMsg.includes('only send testing emails') || smtpMsg.includes('verify a domain')) {
+      lastError = 'Resend test-mode (via SMTP): only the account owner can receive mail. Verify a domain at resend.com/domains and set EMAIL_FROM to you@yourdomain, OR switch EMAIL_* to Gmail App-Password SMTP.';
+    } else if (!lastError) {
+      lastError = `SMTP failed: ${smtpMsg.slice(0, 300)}`;
+    }
     console.warn(`Failed to send email to ${email}: ${err.message}. Falling back to dev-mode log. OTP: ${otp}`);
     // Don't throw; allow OTP flow to continue - frontend will show devOtp as fallback
-    return { delivered: false, error: err.message, fallback: true };
+    return { delivered: false, error: lastError, fallback: true };
   }
 };
 
@@ -229,25 +247,27 @@ router.post('/citizen/send-otp', async (req, res) => {
     }
 
     const otp = generateOTP();
-    otpStore[email] = { otp, userType: 'citizen', userId: user._id, timestamp: Date.now() };
+    const emailKey = String(email).toLowerCase().trim();
+    otpStore[emailKey] = { otp, userType: 'citizen', userId: user._id, timestamp: Date.now() };
     // Also persist to DB for Vercel serverless (in-memory is per-instance)
     if (useDbOtp()) {
       try { await Otp.findOneAndUpdate({ email: String(email).toLowerCase() }, { otp, userType: 'citizen', userId: user._id, createdAt: new Date() }, { upsert: true }); } catch (e) { console.warn('Otp DB save failed:', e.message); }
     }
 
-    const emailResult = await sendOTP(email, otp, 'citizen');
+    const emailResult = await sendOTP(emailKey, otp, 'citizen');
 
     // Always allow login even if email fails - expose OTP as fallback (fixes "backend not working" when Brevo IP blocked)
     const isDummy = !getTransporter();
     const shouldExposeOtp = isDummy || !emailResult.delivered;
     if (!emailResult.delivered) {
-      console.warn(`[OTP] Email not delivered to ${email} (citizen) - OTP ${otp} returned via devOtp fallback`);
+      console.warn(`[OTP] Email not delivered to ${email} (citizen) - OTP ${otp} returned via devOtp fallback. Reason: ${emailResult.error || 'unknown'}`);
     }
     res.json({
       success: true,
       message: emailResult.delivered ? 'OTP sent to email' : 'OTP generated - use code shown (email delivery failed - use code below)',
       ...(shouldExposeOtp && { devOtp: otp }),
       emailDelivered: !!emailResult.delivered,
+      ...(!emailResult.delivered && emailResult.error && { emailError: emailResult.error }),
       ...(isDummy && { note: 'Email not configured, dev OTP returned' })
     });
   } catch (err) {
@@ -291,23 +311,25 @@ router.post('/technician/send-otp', async (req, res) => {
     }
 
     const otp = generateOTP();
-    otpStore[email] = { otp, userType: 'technician', userId: technician._id, timestamp: Date.now() };
+    const emailKey = String(email).toLowerCase().trim();
+    otpStore[emailKey] = { otp, userType: 'technician', userId: technician._id, timestamp: Date.now() };
     if (useDbOtp()) {
       try { await Otp.findOneAndUpdate({ email: String(email).toLowerCase() }, { otp, userType: 'technician', userId: technician._id, createdAt: new Date() }, { upsert: true }); } catch (e) { console.warn('Otp DB save failed:', e.message); }
     }
 
-    const emailResult = await sendOTP(email, otp, 'technician');
+    const emailResult = await sendOTP(emailKey, otp, 'technician');
 
     const isDummy = !getTransporter();
     const shouldExposeOtp = isDummy || !emailResult.delivered;
     if (!emailResult.delivered) {
-      console.warn(`[OTP] Email not delivered to ${email} (technician) - OTP ${otp} returned via devOtp fallback`);
+      console.warn(`[OTP] Email not delivered to ${email} (technician) - OTP ${otp} returned via devOtp fallback. Reason: ${emailResult.error || 'unknown'}`);
     }
     res.json({
       success: true,
       message: emailResult.delivered ? 'OTP sent to email' : 'OTP generated - use code shown (email delivery failed - use code below)',
       ...(shouldExposeOtp && { devOtp: otp }),
-      emailDelivered: !!emailResult.delivered
+      emailDelivered: !!emailResult.delivered,
+      ...(!emailResult.delivered && emailResult.error && { emailError: emailResult.error })
     });
   } catch (err) {
     console.error('technician/send-otp error:', err);
@@ -350,23 +372,25 @@ router.post('/kesco/send-otp', async (req, res) => {
     }
 
     const otp = generateOTP();
-    otpStore[email] = { otp, userType: 'kesco', userId: admin._id, timestamp: Date.now() };
+    const emailKey = String(email).toLowerCase().trim();
+    otpStore[emailKey] = { otp, userType: 'kesco', userId: admin._id, timestamp: Date.now() };
     if (useDbOtp()) {
       try { await Otp.findOneAndUpdate({ email: String(email).toLowerCase() }, { otp, userType: 'kesco', userId: admin._id, createdAt: new Date() }, { upsert: true }); } catch (e) { console.warn('Otp DB save failed:', e.message); }
     }
 
-    const emailResult = await sendOTP(email, otp, 'kesco');
+    const emailResult = await sendOTP(emailKey, otp, 'kesco');
 
     const isDummy = !getTransporter();
     const shouldExposeOtp = isDummy || !emailResult.delivered;
     if (!emailResult.delivered) {
-      console.warn(`[OTP] Email not delivered to ${email} (kesco) - OTP ${otp} returned via devOtp fallback`);
+      console.warn(`[OTP] Email not delivered to ${email} (kesco) - OTP ${otp} returned via devOtp fallback. Reason: ${emailResult.error || 'unknown'}`);
     }
     res.json({
       success: true,
       message: emailResult.delivered ? 'OTP sent to email' : 'OTP generated - use code shown (email delivery failed - use code below)',
       ...(shouldExposeOtp && { devOtp: otp }),
-      emailDelivered: !!emailResult.delivered
+      emailDelivered: !!emailResult.delivered,
+      ...(!emailResult.delivered && emailResult.error && { emailError: emailResult.error })
     });
   } catch (err) {
     console.error('kesco/send-otp error:', err);
@@ -389,7 +413,9 @@ router.post('/verify-otp', async (req, res) => {
     }
 
     // Check in-memory first, then DB (for Vercel serverless)
-    let storedOtp = otpStore[email];
+    // Normalize key: send-otp now stores lowercased+trimmed keys
+    const emailKey = String(email).toLowerCase().trim();
+    let storedOtp = otpStore[emailKey] || otpStore[email];
     let fromDb = false;
     if (!storedOtp && useDbOtp()) {
       try {
@@ -408,6 +434,7 @@ router.post('/verify-otp', async (req, res) => {
     // Check OTP expiry (5 minutes) BEFORE checking validity
     const otpAge = Date.now() - (storedOtp.timestamp || 0);
     if (otpAge > 5 * 60 * 1000) {
+      delete otpStore[emailKey];
       delete otpStore[email];
       if (fromDb) { try { await Otp.deleteOne({ email: String(email).toLowerCase() }); } catch {} }
       return res.status(400).json({ success: false, error: 'OTP expired' });
@@ -458,6 +485,7 @@ router.post('/verify-otp', async (req, res) => {
     } catch (e) { console.warn('Set cookie failed:', e.message); }
 
     // Clean up OTP (both stores)
+    delete otpStore[emailKey];
     delete otpStore[email];
     if (fromDb || useDbOtp()) {
       try { await Otp.deleteOne({ email: String(email).toLowerCase() }); } catch {}

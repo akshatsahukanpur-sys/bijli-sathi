@@ -99,19 +99,24 @@ const pollingLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, error: 'Too many polling requests, please wait.' },
 });
-const authLimiter = rateLimit({
+const sendOtpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 12,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, error: 'Too many OTP requests, please try again later.' }
+  message: { success: false, error: 'Too many OTP requests, please wait a few minutes and try again.' }
 });
 
 app.use('/api/', generalLimiter);
 app.use('/api/kesco/', pollingLimiter);
 app.use('/api/technician/', pollingLimiter);
 app.use('/api/geo/', pollingLimiter);
-app.use('/api/auth/', authLimiter);
+// Scope OTP rate limit to send-otp only — verify-otp/profile must not consume the
+// budget (shared mobile NAT + resend taps previously locked users out with 429)
+app.use('/api/auth/', (req, res, next) => {
+  if (req.path.includes('send-otp')) return sendOtpLimiter(req, res, next);
+  next();
+});
 
 // --- Health check & root ---
 app.get('/api/health', (req, res) => {
